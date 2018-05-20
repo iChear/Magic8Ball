@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="icon" type="image/png" href="img/ball.png" />
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,700" rel="stylesheet">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.0.12/css/all.css">
+    <link rel="stylesheet" href="css/style.css">
+    <title>Magic 8 ball</title>
+</head>
+
+<body>
+    <header class="d-flex justify-content-end">
+        <button class="btn btn-dark btn-add" data-toggle="modal" data-target="#add-answer">
+            <i class=" fas fa-plus"></i>Add your answer
+        </button>
+    </header>
+    <main class="container-fluid p-0 ">
+        <div class="flex-column d-flex justify-content-center align-items-center ball-container">
+            <h4>Get an answer to your question!</h4>
+            <div class="container present-container mt-5 ">
+                <div class="d-flex justify-content-center align-items-center ball ">
+                    <img src="img/ball.png ">
+                    <span class="answer"></span>
+                </div>
+            </div>
+            <form id="ask-form" class="form-inline w-25 mt-5 ">
+                <div class="input-group w-100 ">
+                    <input id="ask-input" class="form-control form-control-sm border-dark " placeholder="Your question" required>
+                    <div class="input-group-append ">
+                        <button type="submit" class="btn btn-dark btn-ask ">
+                            Ask
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+        <div class="container-fluid answers ">
+            <div class="container user-asks ">
+
+
+            </div>
+        </div>
+
+    </main>
+
+    <footer class="footer ">
+        <div class="container ">
+            <span class="text-muted ">Powered by Nebulas</span>
+        </div>
+    </footer>
+
+    <div class="modal" tabindex="-1" role="dialog" id="add-answer">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Add answer</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form id="answer-form">
+                        <div class="form-group">
+                            <label for="answer-input">Answer</label>
+                            <input type="text" class="form-control" id="answer-input" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="sugmit" form="answer-form" class="btn btn-primary" id="add-answer-btn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js "></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js "></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.min.js "></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bignumber.js/7.0.1/bignumber.min.js "></script>
+    <script src="js/nebulas.js "></script>
+    <script src="js/nebPay.js "></script>
+    <script src="js/contractApi.js "></script>
+    <script>
+        'use strict';
+        window.addEventListener("load", function () {
+            let isExtensionExist = typeof (webExtensionWallet) !== "undefined";
+            if (!isExtensionExist) {
+                $('.ball-container').prepend(`<div class="alert alert-danger w-100 text-center" role="alert">
+                        Please install <a class="alert-link" target="_blank" href="https://github.com/ChengOrangeJu/WebExtensionWallet">WebExtensionWallet</a>
+                                             to use Magic 8 ball</div>`);
+            }
+            else {
+                var HttpRequest = require("nebulas").HttpRequest;
+                var Nebulas = require("nebulas");
+                var Neb = Nebulas.Neb;
+                var neb = new Neb();
+                neb.setRequest(new HttpRequest("https://mainnet.nebulas.io"));
+                let api = new BallContract();
+                $("#answer-form").submit(function (event) {
+                    event.preventDefault();
+
+                    let answer = $("#answer-input").val();
+                    api.addAnswer(answer);
+                    $("#add-answer").modal('hide');
+                });
+
+                $("#ask-form").submit((event) => {
+                    event.preventDefault();
+                    $(".ball-container .answer").text("");
+                    let question = $("#ask-input").val();
+                    api.ask(question, resp => {
+                        neb.api.getTransactionReceipt({ hash: resp.txhash }).then(function it(receipt) {
+                            let status = receipt.status;
+                            if (status == 2) { //pending                                    
+                                setTimeout(() => neb.api.getTransactionReceipt({ hash: resp.txhash }).then(it), 3000);
+                                return;
+                            }
+
+                            if (status == 0) { //failed
+
+                            }
+
+                            if (status == 1) { //success
+                                let result = JSON.parse(receipt.execute_result);
+                                $(".ball-container .answer").text(result);
+                            }
+                        });
+                    });
+                });
+
+
+                api.totalQuestion(resp => {
+                    if (resp && resp.result) {
+                        let total = JSON.parse(resp.result);
+                        let offset = total > 10 ? total - 10 : 0;
+                        api.getQuestions(10, offset, resp => {
+                            if (resp && resp.result) {
+                                //load last questions 
+                                let questions = JSON.parse(resp.result);
+                                if (questions.length > 0) {
+                                    $(".user-asks").append('<h4>Users asking</h4>');
+                                }
+
+                                for (const q of questions) {
+                                    $(".user-asks").append(`<div class="ask">
+                                                                <div><span>User:</span>${q.question}</div>
+                                                                <div><span>Ball:</span>${q.answer}</div>
+                                                            </div>`);
+                                }
+                            }
+                        });
+                    }
+                });
+
+            }
+        });
+    </script>
+</body>
+
+</html>
